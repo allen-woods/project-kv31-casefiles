@@ -253,14 +253,41 @@ function download_any {
 
       export EC=1
 
+      local random_sleep=
+
       while [ $EC -ne 0 ]; do
         # Download the file.
-        wget \
-          -c \
-          -O /research/$episode/video/$episode.webm \
+        youtube-dl \
+          --verbose \
+          --no-playlist \
+          --download-archive /ytdl-archive \
+          --limit-rate 50K \
+          --retries infinite \
+          --fragment-retries infinite \
+          --buffer-size 16K \
+          --http-chunk-size 5M \
+          --continue \
+          --sleep-interval $(( 60 * 3 )) \
+          --max-sleep-interval $(( 60 * 7 )) \
+          --output /research/$episode/video/$episode.webm \
           $video_url
+
+        # wget \
+        #   -c \
+        #   -O /research/$episode/video/$episode.webm \
+        #   $video_url
         export EC=$?
-        sleep 1m
+
+        random_sleep=$( \
+          awk \
+          -v min=$(( 60 * 3 )) \
+          -v max=$(( 60 * 7 )) \
+          'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
+        )
+
+        echo -e "\033[0;33mSleeping: ${random_sleep} seconds.\033[0m"
+
+        sleep "${random_sleep}s"
       done
 
       # Inform the user the download finished.
@@ -284,12 +311,33 @@ function download_any {
 
       while [ $EC -ne 0 ]; do
         # Download the file.
-        wget \
-          -c \
-          -O /research/$episode/audio/$episode.m4a \
+        youtube-dl \
+          --verbose \
+          --no-playlist \
+          --download-archive /ytdl-archive \
+          --limit-rate 50K \
+          --retries infinite \
+          --fragment-retries infinite \
+          --buffer-size 16K \
+          --http-chunk-size 5M \
+          --continue \
+          --sleep-interval $(( 60 * 3 )) \
+          --max-sleep-interval $(( 60 * 7 )) \
+          --output /research/$episode/audio/$episode.m4a \
           $audio_url
+
         export EC=$?
-        sleep 1m
+
+        random_sleep=$( \
+          awk \
+          -v min=$(( 60 * 3 )) \
+          -v max=$(( 60 * 7 )) \
+          'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
+        )
+
+        echo -e "\033[0;33mSleeping: ${random_sleep} seconds.\033[0m"
+
+        sleep "${random_sleep}s"
       done
       
       # Inform the user the download finished.
