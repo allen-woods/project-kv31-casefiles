@@ -314,7 +314,7 @@ function download_and_process_episodes {
 
     # If the folder for this episode does not exist...
     # OR, if we are retrying the current episode again...
-    if [ ! -d /research/$ep_name ] || [ $EP_RETRY -eq 1 ]; then
+    if [ ! -d /research/$ep_name ] || [ "${EP_RETRY}" = "1" ]; then
 
       # Sleep randomly before running youtube-dl again to prevent
       # "connection reset by peer" from API.
@@ -444,7 +444,7 @@ function download_and_process_episodes {
       fi
 
       # If we have made it this far...
-      if [ $EP_RETRY -eq 1 ]; then
+      if [ "${EP_RETRY}" = "1" ]; then
         # ...It is safe to delete the retry flag.
         unset $EP_RETRY
       fi
@@ -574,7 +574,7 @@ function download_and_process_episodes {
       fi
 
       # If we have made it this far...
-      if [ $EP_RETRY -eq 1 ]; then
+      if [ "${EP_RETRY}" = "1" ]; then
         # ...It is safe to delete the retry flag.
         unset $EP_RETRY
       fi
