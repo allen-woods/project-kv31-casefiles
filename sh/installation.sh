@@ -1,57 +1,132 @@
 #!/bin/sh
 
-export YT_URL=https://www.youtube.com/playlist\?list\=
-export PLAYLIST_ID=PLVAh-MgDVqvDUEq6qDXqORBioE4Yhol\_z
+export YT_URL="https://www.youtube.com/playlist?list="
+export PLAYLIST_ID="PLVAh-MgDVqvDUEq6qDXqORBioE4Yhol_z"
+export MIN_WAIT=$(( 1 * 60 ))
+export MAX_WAIT=$(( 5 * 60 ))
 
-function apk_update {
-  echo "Updating package repositories..." | tr -d '\n'
-  apk update 2>&1 >/dev/null
-  if [ $? -gt 0 ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
+function print_success_fail {
+  # Require an exit code as the only argument.
+  if [ -z "${1}" ]; then
+    printf '%s\n' \
+    "" \
+    "ERROR: You must pass an exit code." \
+    "usage: ${0} <exit_code>"
     return 1
   fi
+
+  # If the exit code is a numeric value larger than zero...
+  if [ $1 -gt 0 ]; then
+    # Inform the user the operation failed.
+    echo -e "\033[0;31mFAILED\033[0m"
+    # We can go no further.
+    return 1
+  fi
+
+  # Inform the user the operation succeeded by default.
   echo -e "\033[1;32mSUCCESS\033[0m"
 }
 
-function apk_upgrade {
-  echo "Upgrading package versions..." | tr -d '\n'
-  apk upgrade 2>&1 >/dev/null
-  if [ $? -gt 0 ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
+function apk_install {
+  # Require a package name as the minimum number of arguments.
+  if [ -z "${1}" ]; then
+    echo "ERROR: You must pass a package name to install or an option flag."
+    echo "usage: ${0} <pkg|flag> [[install_path] [symbolic_link]]"
     return 1
   fi
-  echo -e "\033[1;32mSUCCESS\033[0m"
+
+  case "${@}" in
+    --update)
+      # Print user feedback to the terminal.
+      echo "Updating package repositories..." | tr -d '\n'
+      
+      # Attempt to update the package repositories.
+      apk update 2>&1 >/dev/null
+      
+      # Print the result of the operation to the terminal.
+      print_success_fail $?
+
+      # Conditionally abort on failure.
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+      ;;
+    --upgrade)
+      # Print user feedback to the terminal.
+      echo "Upgrading package versions..." | tr -d '\n'
+
+      # Attempt to upgrade the package versions.
+      apk upgrade 2>&1 >/dev/null
+
+      # Print the result of the operation to the terminal.
+      print_success_fail $?
+
+      # Conditionally abort on failure.
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+      ;;
+    *)
+      # Print user feedback to the terminal.
+      echo "Installing '${1}'..." | tr -d '\n'
+
+      # Attempt to add the package requested silently.
+      apk add $1 2>&1 >/dev/null
+
+      # Print the result of the operation to the terminal.
+      print_success_fail $?
+
+      # Conditionally abort on failure.
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+
+      # If and only if both optional arguments are present...
+      if [ ! -z "${2}" ] && [ ! -z "${3}" ]; then
+
+        # If the install path doesn't exist for some reason...
+        if [ ! -f $2 ]; then
+
+          # Gracefully break out of our pretty text (tr -d '\n') and
+          # inform the user an error occurred.
+          printf '%s\n' "" "ERROR: Install path \"${2}\" not found."
+
+          # We can go no further.
+          return 1
+        fi
+
+        # Create the requested symlink.
+        ln -s $2 $3
+      fi
+      ;;
+  esac
 }
 
-function install_python {
-  echo "Installing python..." | tr -d '\n'
-  apk add python3 2>&1 >/dev/null
-  ln -s /usr/bin/python3 /usr/bin/python
-}
-
-function verify_python_install {
-  if [ \
-    "$( python --version | cut -d ' ' -f 1 )" != "Python" \
-  ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
+function verify_install {
+  # Require an executable name as the minimum number of arguments.
+  if [ -z "${1}" ]; then
+    printf '%s\n' \
+    "" \
+    "ERROR: Must pass name of binary and verification string as arguments." \
+    "usage: ${0} <bin_name> <\"\$\(verification\)\">"
     return 1
   fi
-  echo -e "\033[1;32mSUCCESS\033[0m"
-}
 
-function install_ffmpeg {
-  echo "Installing ffmpeg..." | tr -d '\n'
-  apk add ffmpeg 2>&1 >/dev/null
-}
+  # Print user feedback to the terminal.
+  echo "Verifying '${1}' installation..." | tr -d '\n'
 
-function verify_ffmpeg_install {
-  if [ \
-    "$( ffmpeg 2>&1 | tr -d '\n' | awk '{ print $1 }' )" != "ffmpeg" \
-  ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
+  # If the verification string is empty...
+  if [ -z "${2}" ]; then
+
+    # ...Inform the user the installation failed.
+    print_success_fail 1
+
+    # We can go no further.
     return 1
   fi
-  echo -e "\033[1;32mSUCCESS\033[0m"
+
+  # Inform the user installation succeeded by default.
+  print_success_fail 0
 }
 
 function install_youtube_dl {
@@ -62,290 +137,362 @@ function install_youtube_dl {
     -O /usr/bin/youtube-dl \
     https://yt-dl.org/downloads/latest/youtube-dl
 
+  # Print user feedback to the terminal.
+  print_success_fail $?
+
+  # Conditionally abort on failure.
+  if [ $? -gt 0 ]; then
+    return 1
+  fi
+
   # Alias and give executable permissions to binary.
   chmod a+rx /usr/bin/youtube-dl
 }
 
-function verify_youtube_dl_install {
-  if [ \
-    "$( youtube-dl 2>&1 | tr -d '\n' | awk '{ print $2 }' )" != "youtube-dl" \
-  ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
-    return 1
-  fi
-  echo -e "\033[1;32mSUCCESS\033[0m"
-}
-
-function build_index_file {
-  # If no arguments have been passed in...
-  if [ -z "${1}" ] || [ -z "${2}" ]; then
-    # Print user feedback to the terminal.
-    echo "ERROR: You must pass output file and media format as arguments."
-    echo "usage: ${0} <video|audio> <271|22>"
-    # ...We can go no further.
-    return 1
+function build_episode_list {
+  # If a previous episode list exists, erase it.
+  if [ -f episode_list ]; then
+    rm -f episode_list
   fi
 
-  # If a previous media index file exists, erase it.
-  [ -f "${1}_index" ] && rm -f "${1}_index"
+  echo "Building episode list..." | tr -d '\n'
 
-  echo "Building temporary ${1} index..." | tr -d '\n'
-
-  # Build temporary unformatted media index file.
+  # Grab the titles of all videos in the playlist.
   youtube-dl \
     --yes-playlist \
-    --format $2 \
-    --simulate \
     --get-title \
-    --get-url \
-    "${YT_URL}${PLAYLIST_ID}" > "tmp_${1}_index"
+    "${YT_URL}${PLAYLIST_ID}" > episode_list
 
-  # If the last command encountered an error or the generated file is empty...
-  if [ $? -ne 0 ] || [ -z "$( cat "tmp_${1}_index" )" ]; then
-    # Print user feedback to the terminal.
-    echo -e "\033[0;31mFAILED\033[0m"
-    # ...We can go no further.
+  print_success_fail $?
+
+  if [ $? -gt 0 ]; then
+    return 1
+  fi
+}
+
+function format_episode_list {
+  echo "Formatting episode list..." | tr -d '\n'
+
+  # Process the titles through awk as originally handled using sed.
+  awk --include inplace \
+  '
+  {
+    sub(/^[^ ]{0,}[ ]{0,}[Backroms]{9}[ -]{1,3}/, "", $0);
+    gsub(/[()]{1}/, "", $0);
+    gsub(/[ ._]{1}/, "-", $0);
+    print tolower($0);
+  }
+  ' episode_list
+
+  print_success_fail $?
+
+  if [ $? -gt 0 ]; then
+    return 1
+  fi
+}
+
+function export_episode_env_vars {
+  echo "Exporting episode env vars..." | tr -d '\n'
+
+  export EP_I=1
+
+  # export the line count of the index file as EP_N.
+  export EP_N=$( wc -l < episode_list )
+
+  print_success_fail $?
+
+  if [ $? -gt 0 ]; then
+    return 1
+  fi
+}
+
+function random_sleep {
+  if [ -z "${1}" ] || [ -z "${2}" ] || [ $1 -eq $2 ]; then
+    printf '%s\n' \
+    "" \
+    "ERROR: Must pass min and max values that are not equal." \
+    "usage: ${0} <min> <max>"
     return 1
   fi
 
-  # Variables related to text transformations performed on temporary index file.
-  local media_basename=
-  local media_url=
-  local i=1
+  local r_sleep=$( \
+    awk \
+    -v min=$1 \
+    -v max=$2 \
+    '
+    BEGIN {
+      srand();
+      print int(min + rand() * (max - min + 1))
+    }
+    '
+  )
 
-  # While we are within the bounds of the temp index file's line count...
-  while [ $i -le $( wc -l < "tmp_${1}_index" ) ]; do
+  echo -e "\033[40m\033[1;37m • Sleeping for ${r_sleep} seconds...\033[0m" | \
+  tr -d '\n'
 
-    # ...Extract and transform title of media.
-    media_basename=$( \
-      sed "${i}q;d" < "tmp_${1}_index" | \
-      tr '[:upper:]' '[:lower:]' | \
-      sed '
-      s|[^\ ]\{0,\}[\ ]\{0,\}[backroms]\{9\}[\ -]\{1,3\}\(.*\)|\1|;
-      s|[()]||g;
-      s|[\_\.\ ]|-|g;
-      s|[-]\{2,\}|-|g;
-      ' \
-    )
+  sleep "${r_sleep}s"
 
-    # ...Extract and hard quote url of media.
-    media_url="$( sed "$(( $i + 1 ))q;d" < "tmp_${1}_index" )"
-
-    # Only append valid data to the end of destination file.
-    # (No blank lines!)
-    if [ ! -z "${media_basename}" ] && [ ! -z "${media_url}" ]; then
-      echo "${media_basename} ${media_url}" >> "${1}_index"
-    fi
-
-    # Increment by 2.
-    i=$(( $i + 2 ))
-  done
-
-  # Erase the temporary media index.
-  rm -f "tmp_${1}_index"
-  echo -e "\033[1;32mSUCCESS\033[0m"
+  echo -e "\033[42m\033[1;37m DONE! \033[0m"
 }
 
-# Verify media index data
-function verify_media_index_integrity {
-  echo "Verifying data..." | tr -d '\n'
+function download_episodes {
+  while [ $EP_I -le $EP_N ]; do
 
-  # Require both indices to contain the same number of entries.
-  if [ $( wc -l < video_index ) -ne $( wc -l < audio_index ) ]; then
-    echo -e "\033[0;31mFAILED\033[0m"
-    echo "Mismatched item counts between audio and video."
-    return 1
-  fi
+    local ep_name=$( sed "${EP_I}q;d" < episode_list )
 
-  local i=1
-  while [ $i -le $( wc -l < video_index ) ]; do
-    video_title=$( sed "${i}q;d" < video_index | cut -d ' ' -f 1 )
-    video_url=$( sed "${i}q;d" < video_index | cut -d ' ' -f 2 )
+    if [ ! -d /research/$ep_name ] || [ $EP_RETRY -eq 1 ]; then
 
-    audio_title=$( sed "${i}q;d" < audio_index | cut -d ' ' -f 1 )
-    audio_url=$( sed "${i}q;d" < audio_index | cut -d ' ' -f 2 )
+      if [ $EP_I -gt 1 ]; then
+        random_sleep $MIN_WAIT $MAX_WAIT
+      fi
 
-    # Require both indices to contain a common name at index N.
-    if [ "${video_title}" != "${audio_title}" ]; then
-      echo -e "\033[0;31mFAILED\033[0m"
-      echo "Video and audio items ${i} do not share common name."
-      return 1
-    fi
+# - - BEGIN: Video
+      echo "Requesting video url: '${ep_name}'..." | tr -d '\n'
 
-    # Forbid both indices to share a URL at any given index N.
-    if [ "${video_url}" = "${audio_url}" ]; then
-      echo -e "\033[0;31mFAILED\033[0m"
-      echo "Video and audio items ${i} reference the same URL."
-      return 1
-    fi
-
-    # Increment through the entries.
-    i=$(( $i + 1 ))
-  done
-  echo -e "\033[1;32mSUCCESS\033[0m"
-}
-
-# Prepare folders for all videos and audio tracks not yet downloaded.
-function prepare_filesystem {
-  echo "Preparing filesystem..." | tr -d '\n'
-
-  # Variables related to parsing media index entries.
-  local folder_name=
-  local i=1
-
-  # While we are in the bounds of media index's line count...
-  while [ $i -le $( wc -l < video_index ) ]; do
-    # ...Capture the intended folder name from the current entry.
-    folder_name=$( sed "${i}q;d" < video_index | cut -d ' ' -f 1 )
-
-    # If a folder does not exist with that name yet...
-    if [ ! -d /research/$folder_name ]; then
-
-      # ...Create the folder.
-      mkdir -m 0755 /research/$folder_name
-    fi
-
-    # Increment to next line of media index.
-    i=$(( $i + 1 ))
-  done
-
-  echo -e "\033[1;32mSUCCESS\033[0m"
-}
-
-function download_any {
-  # Calculate the number of hyperthreads available, minus one.
-  local ht_count=$(( $( nproc ) * 2 - 1 ))
-  # Store the line count of the media index.
-  local l_count=$( wc -l < video_index )
-  # Subprocess count, preferring the smaller of ht_count and l_count.
-  local p_count=
-
-  # Ternary logic for assigning smallest number of subprocesses to spawn.
-  [ $l_count -le $ht_count ] && p_count=$l_count || p_count=$ht_count
-  
-  local episode=
-  local video_url=
-  local audio_url=
-  local i=1;
-
-  while [ $i -le $l_count ]; do
-    episode=$( sed "${i}q;d" < video_index | cut -d ' ' -f 1 )
-    video_url=$( sed "${i}q;d" < video_index | cut -d ' ' -f 2 )
-    audio_url=$( sed "${i}q;d" < audio_index | cut -d ' ' -f 2 )
-    local pretty="$( \
-      echo $episode | \
-      sed 's|-|\ |g' | \
-      awk '{for(j=1;j<=NF;j++){$j=toupper(substr($j,1,1)) substr($j,2)}}1' \
-    )"
-
-    # If the video data for this item has not been downloaded...
-    if [ ! -d /research/$episode/video ]; then
-      
-      # ...Create a directory for the file.
-      mkdir -m 0755 /research/$episode/video
-      
-      # Inform user that this process will take a very long time.
-      echo -e "\033[1;33m * * * Downloading: Video Data * * *\033[0m"
-      echo -e "\033[1;33m *\033[0m"
-      echo -e "\033[1;33m * Item: \"${pretty}\"\033[0m"
-      echo -e "\033[1;33m *\033[0m"
-      echo -e "\033[1;33m * * * * * * * * * * * * * * * * * *\033[0m"
-
-      export EC=1
-
-      local random_sleep=
-
-      while [ $EC -ne 0 ]; do
-        # Download the file.
+      local video_url=$( \
         youtube-dl \
-          --verbose \
-          --no-playlist \
-          --download-archive /ytdl-archive \
-          --limit-rate 50K \
-          --retries infinite \
-          --fragment-retries infinite \
-          --buffer-size 16K \
-          --http-chunk-size 5M \
-          --continue \
-          --sleep-interval $(( 60 * 3 )) \
-          --max-sleep-interval $(( 60 * 7 )) \
-          --output /research/$episode/video/$episode.webm \
-          $video_url
+        --no-playlist \
+        --playlist-start $EP_I \
+        --playlist-end $EP_I \
+        --format 271 \
+        --get-url \
+        "${YT_URL}${PLAYLIST_ID}" >&1 \
+      )
 
-        # wget \
-        #   -c \
-        #   -O /research/$episode/video/$episode.webm \
-        #   $video_url
-        export EC=$?
+      print_success_fail $?
 
-        random_sleep=$( \
-          awk \
-          -v min=$(( 60 * 3 )) \
-          -v max=$(( 60 * 7 )) \
-          'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
-        )
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
 
-        echo -e "\033[0;33mSleeping: ${random_sleep} seconds.\033[0m"
+      echo "Parsing video bytesize: '${ep_name}'..." | tr -d '\n'
 
-        sleep "${random_sleep}s"
-      done
+      local video_bytes=$( \
+        echo $video_url | \
+        awk \
+        '
+        {
+          sub(/^[^ ]{0,}[&clen=]{6}/, "", $0);
+          sub(/[&dur=]{5}[^ ]{0,}$/, "", $0);
+          print
+        }
+        ' \
+      )
 
-      # Inform the user the download finished.
-      echo -e "\033[1;32mDOWNLOAD COMPLETE\033[0m"
-    fi
+      print_success_fail $?
 
-    # If the audio data for this item has not been downloaded...
-    if [ ! -d /research/$episode/audio ]; then
-      
-      # ...Create a directory for the file.
-      mkdir -m 0755 /research/$episode/audio
-      
-      # Inform user that this process will take a very long time.
-      echo -e "\033[1;33m * * * Downloading: Audio Data * * *\033[0m"
-      echo -e "\033[1;33m *\033[0m"
-      echo -e "\033[1;33m * Item: \"${pretty}\"\033[0m"
-      echo -e "\033[1;33m *\033[0m"
-      echo -e "\033[1;33m * * * * * * * * * * * * * * * * * *\033[0m"
-      
-      export EC=1
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
 
-      while [ $EC -ne 0 ]; do
-        # Download the file.
+      if [ ! -d /research/$ep_name/video ]; then
+        echo "Preparing filesystem..." | tr -d '\n'
+        
+        mkdir -pm 0755 /research/$ep_name/video
+
+        print_success_fail $?
+
+        if [ $? -gt 0 ]; then
+          return 1
+        fi
+      fi
+
+      echo "Downloading hi-res footage: '${ep_name}'..." | tr -d '\n'
+
+      youtube-dl \
+      --no-playlist \
+      --limit-rate 50K \
+      --retries infinite \
+      --fragment-retries infinite \
+      --buffer-size 16K \
+      --http-chunk-size 5M \
+      --continue \
+      --sleep-interval $MIN_WAIT \
+      --max-sleep-interval $MAX_WAIT \
+      --output /research/$ep_name/video/$ep_name-video-only.webm \
+      $video_url 2>&1 >/dev/null
+
+      print_success_fail $?
+
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+
+      if [ ! -f /research/$ep_name/video/$ep_name-video-only.webm ]; then
+        export EP_RETRY=1
+        continue
+      fi
+
+      echo "Verifying download..." | tr -d '\n'
+
+      local video_disk=$( \
+        wc -c /research/$ep_name/video/$ep_name-video-only.webm \
+      )
+
+      if [ $video_disk -ne $video_bytes \
+      ]; then
+        print_success_fail 1
+        export EP_RETRY=1
+        continue
+      fi
+
+      if [ $EP_RETRY -eq 1 ]; then
+        unset $EP_RETRY
+      fi
+
+      print_success_fail 0
+# - - END: Video
+
+      random_sleep $MIN_WAIT $MAX_WAIT
+
+# - - BEGIN: Audio
+      echo "Requesting audio url: '${ep_name}'..." | tr -d '\n'
+
+      local audio_url=$( \
         youtube-dl \
-          --verbose \
-          --no-playlist \
-          --download-archive /ytdl-archive \
-          --limit-rate 50K \
-          --retries infinite \
-          --fragment-retries infinite \
-          --buffer-size 16K \
-          --http-chunk-size 5M \
-          --continue \
-          --sleep-interval $(( 60 * 3 )) \
-          --max-sleep-interval $(( 60 * 7 )) \
-          --output /research/$episode/audio/$episode.m4a \
-          $audio_url
+        --no-playlist \
+        --playlist-start $EP_I \
+        --playlist-end $EP_I \
+        --format 140 \
+        --get-url \
+        "${YT_URL}${PLAYLIST_ID}" >&1 \
+      )
 
-        export EC=$?
+      print_success_fail $?
 
-        random_sleep=$( \
-          awk \
-          -v min=$(( 60 * 3 )) \
-          -v max=$(( 60 * 7 )) \
-          'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
-        )
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
 
-        echo -e "\033[0;33mSleeping: ${random_sleep} seconds.\033[0m"
+      echo "Parsing audio bytesize: '${ep_name}'..." | tr -d '\n'
 
-        sleep "${random_sleep}s"
-      done
-      
-      # Inform the user the download finished.
-      echo -e "\033[1;32mDOWNLOAD COMPLETE\033[0m"
+      local audio_bytes=$( \
+        echo $audio_url | \
+        awk \
+        '
+        {
+          sub(/^[^ ]{0,}[&clen=]{6}/, "", $0);
+          sub(/[&dur=]{5}[^ ]{0,}$/, "", $0);
+          print
+        }
+        ' \
+      )
+
+      print_success_fail $?
+
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+
+      if [ ! -d /research/$ep_name/audio ]; then
+        echo "Preparing filesystem..." | tr -d '\n'
+        
+        mkdir -m 0755 /research/$ep_name/audio
+
+        print_success_fail $?
+
+        if [ $? -gt 0 ]; then
+          return 1
+        fi
+      fi
+
+      echo "Downloading hi-res audio: '${ep_name}'..." | tr -d '\n'
+
+      youtube-dl \
+      --no-playlist \
+      --limit-rate 50K \
+      --retries infinite \
+      --fragment-retries infinite \
+      --buffer-size 16K \
+      --http-chunk-size 5M \
+      --continue \
+      --sleep-interval $MIN_WAIT \
+      --max-sleep-interval $MAX_WAIT \
+      --output /research/$ep_name/audio/$ep_name-audio-only.m4a \
+      $audio_url 2>&1 >/dev/null
+
+      print_success_fail $?
+
+      if [ $? -gt 0 ]; then
+        return 1
+      fi
+
+      if [ ! -f /research/$ep_name/audio/$ep_name-audio-only.m4a ]; then
+        export EP_RETRY=1
+        continue
+      fi
+
+      echo "Verifying download..." | tr -d '\n'
+
+      local audio_disk=$( \
+        wc -c /research/$ep_name/audio/$ep_name-audio-only.m4a \
+      )
+
+      if [ $audio_disk -ne $audio_bytes \
+      ]; then
+        print_success_fail 1
+        export EP_RETRY=1
+        continue
+      fi
+
+      if [ $EP_RETRY -eq 1 ]; then
+        unset $EP_RETRY
+      fi
+
+      print_success_fail 0
+# - - END: Audio
+
+      if [ ! -f /research/$ep_name/$ep_name.webm ]; then
+        echo "Combining video and audio: '${ep_name}'."
+        echo -e "\033[0;31m* * * CAUTION: * * *"
+        echo -e "- This media post-processing consumes a lot of CPU."
+        echo -e "- Running heavy background processes is unadvisable.\033[0m"
+
+        ffmpeg \
+        -i /research/$ep_name/video/$ep_name-video-only.webm \
+        -i /research/$ep_name/audio/$ep_name-audio-only.m4a \
+        -c:v libvpx-vp9 -crf 0 \
+        -c:a libopus -q:a 0 -b:a 128k \
+        /research/$ep_name/$ep_name.webm
+
+        print_success_fail $?
+
+        if [ $? -gt 0 ]; then
+          return 1
+        fi
+      fi
+
+      if [ ! -d /research/$ep_name/frames ]; then
+        echo "Preparing filesystem..." | tr -d '\n'
+        
+        mkdir -m 0755 /research/$ep_name/frames
+
+        print_success_fail $?
+
+        if [ $? -gt 0 ]; then
+          return 1
+        fi
+
+        echo "Exporting frames: '${ep_name}'..." | tr -d '\n'
+
+        ffmpeg \
+        -i /research/$ep_name/video/$ep_name-video-only.webm \
+        -vf scale=320:240,setsar=1:1 \
+        /research/$ep_name/frames/$ep_name-frame-%08d.png
+
+        print_success_fail $?
+
+        if [ $? -gt 0 ]; then
+          return 1
+        fi
+      fi
+
+      # Generate notes.
     fi
 
-    # Increment to the next item.
-    i=$(( $i + 1 ))
+    if [ -z "${EP_RETRY}" ]; then
+      EP_I=$(( $EP_I + 1 ))
+    fi
   done
 }
 
@@ -485,23 +632,77 @@ function confirm_process_completed {
 
 function install {
   # Call all of our functions, contingent upon the previous success code.
-  apk_update
-  [ $? -eq 0 ] && apk_upgrade
-  [ $? -eq 0 ] && install_python
-  [ $? -eq 0 ] && verify_python_install
-  [ $? -eq 0 ] && install_ffmpeg
-  [ $? -eq 0 ] && verify_ffmpeg_install
+
+  # APK UPDATE
+  apk_install --update
+
+  # APK UPGRADE
+  [ $? -eq 0 ] && apk_install --upgrade
+
+  # GAWK
+  [ $? -eq 0 ] && apk_install gawk
+  [ $? -eq 0 ] && \
+  verify_install gawk \
+  $( \
+    gawk \
+    --help 2>&1 | \
+    tr -d '\n' | \
+    awk '/POSIX or GNU/ { print $2 }' \
+  )
+
+  # PYTHON
+  [ $? -eq 0 ] && apk_install python3 /usr/bin/python3 /usr/bin/python
+  [ $? -eq 0 ] && \
+  verify_install python \
+  $( \
+    python \
+    --version | \
+    awk '/Python/ { print $1 }' \
+  )
+
+  # FFMPEG
+  [ $? -eq 0 ] && apk_install ffmpeg
+  [ $? -eq 0 ] && \
+  verify_install ffmpeg \
+  $( \
+    ffmpeg 2>&1 | \
+    tr -d '\n' | \
+    awk '/ffmpeg/ { print $1 }' \
+  )
+
+  # WGET
+  [ $? -eq 0 ] && apk_install wget
+  [ $? -eq 0 ] && \
+  verify_install wget \
+  $( \
+    wget --help 2>&1 | \
+    awk '/GNU Wget/ { print $1 }' \
+  )
+
+  # YOUTUBE-DL
   [ $? -eq 0 ] && install_youtube_dl
-  [ $? -eq 0 ] && verify_youtube_dl_install
-  [ $? -eq 0 ] && build_index_file video 271
-  [ $? -eq 0 ] && build_index_file audio 140
-  [ $? -eq 0 ] && verify_media_index_integrity
-  [ $? -eq 0 ] && prepare_filesystem
-  [ $? -eq 0 ] && download_any
-  [ $? -eq 0 ] && export_frames
-  [ $? -eq 0 ] && combine_video_and_audio
-  [ $? -eq 0 ] && generate_obsidian_notes
-  [ $? -eq 0 ] && confirm_process_completed
+  [ $? -eq 0 ] && \
+  verify_install youtube-dl \
+  $( \
+    youtube-dl 2>&1 | \
+    tr -d '\n' | \
+    awk '{ print $2 }' \
+  )
+
+  # Setup the default boilerplate.
+  [ $? -eq 0 ] && build_episode_list
+  [ $? -eq 0 ] && format_episode_list
+  [ $? -eq 0 ] && export_episode_env_vars
+  [ $? -eq 0 ] && download_episodes
+  # [ $? -eq 0 ] && build_index_file video 271
+  # [ $? -eq 0 ] && build_index_file audio 140
+  # [ $? -eq 0 ] && verify_media_index_integrity
+  # [ $? -eq 0 ] && prepare_filesystem
+  # [ $? -eq 0 ] && download_any
+  # [ $? -eq 0 ] && export_frames
+  # [ $? -eq 0 ] && combine_video_and_audio
+  # [ $? -eq 0 ] && generate_obsidian_notes
+  # [ $? -eq 0 ] && confirm_process_completed
 }
 
 # Call the installation function.
