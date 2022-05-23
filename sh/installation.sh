@@ -259,7 +259,7 @@ function export_episode_env_vars {
   export EP_I=1
 
   # export the line count of the episode list as EP_N.
-  export EP_N=$( wc -l < episode_list )
+  export EP_N=$( wc -l < episode_list | awk '{ print $1 }' )
 
   print_success_fail $?
 
@@ -431,7 +431,8 @@ function download_and_process_episodes {
 
       # Extract the final size on disk of the output file.
       local video_disk=$( \
-        wc -c /research/$ep_name/video/$ep_name-video-only.webm \
+        wc -c /research/$ep_name/video/$ep_name-video-only.webm | \
+        awk '{ print $1 }' \
       )
 
       # If the expected size and size on disk do not match...
@@ -560,7 +561,8 @@ function download_and_process_episodes {
 
       # Extract the final size on disk of the output file.
       local audio_disk=$( \
-        wc -c /research/$ep_name/audio/$ep_name-audio-only.m4a \
+        wc -c /research/$ep_name/audio/$ep_name-audio-only.m4a | \
+        awk '{ print $1 }' \
       )
 
       # If the expected size and size on disk do not match...
