@@ -1,48 +1,46 @@
 #!/bin/sh
 set -e
 
+# Pretty print env vars.
+export PRETTY_LINE_MAX_W=128
+export PRETTY_LINE_NF_W=9
+export PRETTY_CH=_
+
 # YouTube env vars.
 export YT_URL="https://www.youtube.com/playlist?list="
 export PLAYLIST_ID="PLVAh-MgDVqvDUEq6qDXqORBioE4Yhol_z"
 
 # Global min/max values for randomized sleep.
-export MIN_WAIT=$(( 11 * 60 ))
-export MAX_WAIT=$(( 23 * 60 ))
+export MIN_WAIT=$(( 1 * 60 ))
+export MAX_WAIT=$(( 3 * 60 ))
 
 # Utility function to provide pretty printing before gawk is installed.
-function hack_with_dots {
-  if [ -z "${1}" ]; then
+function patch_with_char {
+  if [ -z "${1}" ] || [ -z "${2}" ]; then
     printf '%s\n' \
-    "ERROR: Must pass quoted string as argument." \
-    "usage: ${0} <\"str\">"
+    "ERROR: Must pass quoted string and padding character as arguments." \
+    "usage: ${0} <\"str\"> <char> [printf_fmt_str]"
     return 1
   fi
 
-  if [ -z "${LINE_STR_W}" ]; then
-    export LINE_STR_W=91
-  fi
+  local msg="$( printf "${3:-"%s"}" "${1}" | tr -d '\n' )"
+  local ch="${2}"
 
-  if [ -z "${NF_STR_W}" ]; then
-    export NF_STR_W=9
-  fi
+  # Only known gremlin: there is a single character too few (+1 below).
+  local width=$(( $PRETTY_LINE_MAX_W - ${#msg} - $PRETTY_LINE_NF_W + 1 ))
 
-  # Only known gremlin: there is a single character to ofew (+1 below).
-  local width=$(( $LINE_STR_W - ${#1} - $NF_STR_W + 1 ))
-
-  printf '%s' "${1}"
-  printf '%s' "$( seq -s. ${width} | tr -d '[:digit:]' )"
+  printf "${3:-"%s"}" "${1}"
+  printf '\e[38;2;127;127;127;02m%s\e[m' \
+  "$( seq -s ${ch} ${width} | tr -d '[:digit:]' )"
 }
 
 # Utility function for checking network connectivity.
 function is_internet_accessible {
-  if [ -z "${GAWK_ONBOARD}" ]; then
-    hack_with_dots "Network" || true
-  else
-    pad_with_dots "Network" || true
-  fi
+  patch_with_char "Network" "." '\e[0;34m • %s\e[m' || true
 
-  # Request google silently.
-  wget --spider https://www.google.com -o /dev/null || true
+  wget -qc \
+  --spider \
+  https://www.google.com || true
 
   if [ $? -gt 0 ]; then
     printf '\e[0;105m\e[1;36m %s \e[m\n' "OFFLINE"
@@ -50,33 +48,6 @@ function is_internet_accessible {
   fi
 
   printf '\e[1;34m\e[40m   %s    \e[m\n' "OK"
-}
-
-function pad_with_dots {
-  if [ -z "${1}" ]; then
-    printf '%s\n' \
-    "ERROR: Must pass quoted string as argument." \
-    "usage: ${0} <\"str\">"
-    return 1
-  fi
-
-  printf '%s' "${1}" | \
-  awk \
-  -v "lw=${LINE_STR_W}" \
-  -v "nw=${NF_STR_W}" \
-  '
-  BEGIN {
-    FS = "\\."
-    width = lw
-    pad = sprintf("%*s", width, "")
-    gsub(" ", ".", pad)
-  }
-
-  {
-    padwidth = width - length($0) - nw
-    printf("%s%.*s", $0, padwidth, pad)
-  }
-  '
 }
 
 # Utility function for printing success/failure to terminal.
@@ -117,7 +88,10 @@ function apk_install {
       is_internet_accessible
 
       # Print user feedback to the terminal.
-      hack_with_dots "Updating package repositories" || true
+      patch_with_char \
+      "Updating package repositories" \
+      "${PRETTY_CH}" \
+      '\e[0;36m%s\e[m' || true
       
       # Attempt to update the package repositories.
       apk update 2>&1 >/dev/null || true
@@ -130,7 +104,10 @@ function apk_install {
       is_internet_accessible
 
       # Print user feedback to the terminal.
-      hack_with_dots "Upgrading package versions" || true
+      patch_with_char \
+      "Upgrading package versions" \
+      "${PRETTY_CH}" \
+      '\e[0;36m%s\e[m' || true
 
       # Attempt to upgrade the package versions.
       apk upgrade 2>&1 >/dev/null || true
@@ -143,11 +120,10 @@ function apk_install {
       is_internet_accessible
 
       # Print user feedback to the terminal.
-      if [ -z "${GAWK_ONBOARD}" ]; then
-        hack_with_dots "Installing '${1}'" || true
-      else
-        pad_with_dots "Installing '${1}'" || true
-      fi
+      patch_with_char \
+      "Installing '${1}'" \
+      "${PRETTY_CH}" \
+      '\e[0;36m%s\e[m' || true
 
       # Attempt to add the package requested silently.
       apk add $1 2>&1 >/dev/null || true
@@ -188,11 +164,10 @@ function verify_install {
   fi
 
   # Print user feedback to the terminal.
-  if [ -z "${GAWK_ONBOARD}" ]; then
-    hack_with_dots "Verifying '${1}' installation" || true
-  else
-    pad_with_dots "Verifying '${1}' installation" || true
-  fi
+  patch_with_char \
+  "Verifying '${1}' installation" \
+  "${PRETTY_CH}" \
+  '\e[0;32m%s\e[m' || true
 
   # If the verification string is empty...
   if [ -z "${2}" ]; then
@@ -214,13 +189,15 @@ function install_youtube_dl {
   is_internet_accessible
 
   # Print user feedback to the terminal.
-  pad_with_dots "Installing 'youtube-dl'" || true
+  patch_with_char \
+  "Installing 'youtube-dl'" \
+  "${PRETTY_CH}" \
+  '\e[0;36m%s\e[m' || true
 
   # Download over wget.
-  wget \
-    -cq \
-    -O /usr/bin/youtube-dl \
-    https://yt-dl.org/downloads/latest/youtube-dl || true
+  wget -qc \
+  -O /usr/bin/youtube-dl \
+  https://yt-dl.org/downloads/latest/youtube-dl || true
 
   # Print user feedback to the terminal.
   print_success_fail $?
@@ -240,7 +217,10 @@ function build_episode_list {
   is_internet_accessible
 
   # Print user feedback to the terminal.
-  pad_with_dots "Building episode list" || true
+  patch_with_char \
+  "Building episode list" \
+  "${PRETTY_CH}" \
+  '\e[0;33m%s\e[m' || true
 
   # Grab the titles of all videos in the playlist.
   youtube-dl \
@@ -254,7 +234,10 @@ function build_episode_list {
 # Format the entries of the episode list into slug-case/kebab-case.
 function format_episode_list {
   # Print user feedback to the terminal.
-  pad_with_dots "Formatting episode list" || true
+  patch_with_char \
+  "Formatting episode list" \
+  "${PRETTY_CH}" \
+  '\e[0;33m%s\e[m' || true
 
   # Process the titles through awk as originally handled using sed.
   awk --include inplace \
@@ -273,7 +256,10 @@ function format_episode_list {
 # Export env vars for use with tracking which episode we're processing.
 function export_episode_env_vars {
   # Print user feedback to the terminal.
-  pad_with_dots "Exporting episode env vars" || true
+  patch_with_char \
+  "Exporting episode env vars" \
+  "${PRETTY_CH}" \
+  '\e[0;36m%s\e[m' || true
 
   # Export the current episode's index.
   export EP_I=1
@@ -309,9 +295,10 @@ function random_sleep {
   )
 
   # Print user feedback to the terminal.
-  pad_with_dots "Sleeping for ${r_sleep} seconds" || true
-
-  #printf '\e[43m\e[1;37m • %s\e[m' "Sleeping for ${r_sleep} seconds..."
+  patch_with_char \
+  "Sleeping for ${r_sleep} seconds" \
+  "${PRETTY_CH}" \
+  '\e[0;35m • %s\e[m' || true
 
   # Pause executing script(s) for a random amount of time.
   sleep "${r_sleep}s"
@@ -333,7 +320,7 @@ function download_and_process_episodes {
 
     # If the folder for this episode does not exist...
     # OR, if we are retrying the current episode again...
-    if [ ! -d research/$ep_name ] || [ "${EP_RETRY}" = "1" ]; then
+    if [ ! -d research/$ep_name ]; then
 
       # Sleep randomly before running youtube-dl again to prevent
       # "connection reset by peer" or 403 Forbidden from API.
@@ -343,22 +330,28 @@ function download_and_process_episodes {
       is_internet_accessible
 
 # - - BEGIN: Video
-      pad_with_dots "Requesting video url: '${ep_name}'" || true
+      patch_with_char \
+      "Requesting video url: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;33m%s\e[m' || true
 
       # Request the url of the video stream.
       local video_url=$( \
         youtube-dl \
-        --no-playlist \
         --playlist-start $EP_I \
         --playlist-end $EP_I \
-        --format 271 \
+        --no-playlist \
         --get-url \
+        --format 271 \
         "${YT_URL}${PLAYLIST_ID}" >&1 \
       ) || true
 
       print_success_fail $?
 
-      pad_with_dots "Parsing video bytesize: '${ep_name}'" || true
+      patch_with_char \
+      "Parsing video byte size: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;33m%s\e[m' || true
 
       # Parse the byte size of the requested video stream.
       local video_bytes=$( \
@@ -378,7 +371,10 @@ function download_and_process_episodes {
       # If the video subdirectory for this episode doesn't exist...
       if [ ! -d research/$ep_name/video ]; then
         # Print user feedback to the terminal.
-        pad_with_dots "Preparing filesystem" || true
+        patch_with_char \
+        "Preparing filesystem" \
+        "${PRETTY_CH}" \
+        '\e[0;36m%s\e[m' || true
         
         # ...Create the path.
         mkdir -pm 0755 research/$ep_name/video || true
@@ -399,31 +395,38 @@ function download_and_process_episodes {
       is_internet_accessible
 
       # Print user feedback to the terminal.
-      pad_with_dots "Downloading hi-res footage: '${ep_name}'" || true
+      patch_with_char \
+      "Downloading hi-res footage: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
 
-      # Download the requested video stream silently.
+      printf '\e[1;37m\e[45m %s \e[m\n' "WAIT..."
+
+      # Download the requested video stream.
+
       youtube-dl \
+      --playlist-start $EP_I \
+      --playlist-end $EP_I \
       --no-playlist \
       --retries infinite \
       --fragment-retries infinite \
       --buffer-size 16K \
       --http-chunk-size 5M \
       --continue \
+      --format 271 \
+      --output research/$ep_name/video/$ep_name-video-only.webm \
       --sleep-interval $MIN_WAIT \
       --max-sleep-interval $MAX_WAIT \
-      --output research/$ep_name/video/$ep_name-video-only.webm \
-      $video_url 2>&1 >/dev/null || true
+      "${YT_URL}${PLAYLIST_ID}" || true
 
-      print_success_fail $?
+      local v_ec=$?
 
-      # If the above output file does not exist, we have to retry it.
-      if [ ! -f research/$ep_name/video/$ep_name-video-only.webm ]; then
-        export EP_RETRY=1
-        continue
-      fi
+      patch_with_char \
+      "Download" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
 
-      # Print user feedback to the terminal.
-      pad_with_dots "Verifying download" || true
+      print_success_fail $v_ec
 
       # Extract the final size on disk of the output file.
       local video_disk=$( \
@@ -431,21 +434,12 @@ function download_and_process_episodes {
         awk '{ print $1 }' \
       )
 
-      # If the expected size and size on disk do not match...
-      if [ "${video_disk}" != "${video_bytes}" ]; then
-        # ...We must retry.
-        print_success_fail 1
-        export EP_RETRY=1
-        continue
-      fi
+      patch_with_char \
+      "Expected: ${video_bytes}, Got: ${video_disk}" \
+      "${PRETTY_CH}" \
+      '\e[1;36m\e[46m >> %s\e[m' || true
 
-      # If we have made it this far...
-      if [ "${EP_RETRY}" = "1" ]; then
-        # ...It is safe to delete the retry flag.
-        export $EP_RETRY=
-      fi
-
-      print_success_fail 0
+      printf '\e[1;36m\e[46m  %s  \e[m\n' "BYTES"
 # - - END: Video
 
       # Sleep randomly before running youtube-dl again to prevent
@@ -456,23 +450,29 @@ function download_and_process_episodes {
       is_internet_accessible
 
 # - - BEGIN: Audio
-      pad_with_dots "Requesting audio url: '${ep_name}'" || true
+      patch_with_char \
+      "Requesting audio url: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;33m%s\e[m' || true
 
       # Request the url of the audio stream.
       local audio_url=$( \
         youtube-dl \
-        --no-playlist \
         --playlist-start $EP_I \
         --playlist-end $EP_I \
-        --format 140 \
+        --no-playlist \
         --get-url \
+        --format 140 \
         "${YT_URL}${PLAYLIST_ID}" >&1 \
       ) || true
 
       print_success_fail $?
 
       # Print user feedback to the terminal.
-      pad_with_dots "Parsing audio bytesize: '${ep_name}'" || true
+      patch_with_char \
+      "Parsing audio bytesize: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;33m%s\e[m' || true
 
       # Parse the byte size of the requested audio stream.
       local audio_bytes=$( \
@@ -489,14 +489,13 @@ function download_and_process_episodes {
 
       print_success_fail $?
 
-      if [ $? -gt 0 ]; then
-        return 1
-      fi
-
       # If the audio subdirectory for this episode doesn't exist...
       if [ ! -d research/$ep_name/audio ]; then
         # Print user feedback to the terminal.
-        pad_with_dots "Preparing filesystem" || true
+        patch_with_char \
+        "Preparing filesystem" \
+        "${PRETTY_CH}" \
+        '\e[0;36m%s\e[m' || true
         
         # ...Create the subdirectory.
         mkdir -m 0755 research/$ep_name/audio || true
@@ -508,31 +507,37 @@ function download_and_process_episodes {
       is_internet_accessible
 
       # Print user feedback to the terminal.
-      pad_with_dots "Downloading hi-res audio: '${ep_name}'" || true
+      patch_with_char \
+      "Downloading hi-res audio: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
 
-      # Download the requested audio stream silently.
+      printf '\e[1;37m\e[45m %s \e[m\n' "WAIT..."
+
+      # Download the requested audio stream.
       youtube-dl \
+      --playlist-start $EP_I \
+      --playlist-end $EP_I \
       --no-playlist \
       --retries infinite \
       --fragment-retries infinite \
       --buffer-size 16K \
       --http-chunk-size 5M \
       --continue \
+      --format 140 \
+      --output research/$ep_name/audio/$ep_name-audio-only.m4a \
       --sleep-interval $MIN_WAIT \
       --max-sleep-interval $MAX_WAIT \
-      --output research/$ep_name/audio/$ep_name-audio-only.m4a \
-      $audio_url 2>&1 >/dev/null || true
+      "${YT_URL}${PLAYLIST_ID}" || true
 
-      print_success_fail $?
+      local a_ec=$?
 
-      # If the above output file does not exist, we have to retry it.
-      if [ ! -f research/$ep_name/audio/$ep_name-audio-only.m4a ]; then
-        export EP_RETRY=1
-        continue
-      fi
+      patch_with_char \
+      "Download" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
 
-      # Print user feedback to the terminal.
-      pad_with_dots "Verifying download" || true
+      print_success_fail $a_ec
 
       # Extract the final size on disk of the output file.
       local audio_disk=$( \
@@ -540,49 +545,49 @@ function download_and_process_episodes {
         awk '{ print $1 }' \
       )
 
-      # If the expected size and size on disk do not match...
-      if [ "${audio_disk}" != "${audio_bytes}" ]; then
-        # ...We must retry.
-        print_success_fail 1
-        export EP_RETRY=1
-        continue
-      fi
+      patch_with_char \
+      "Expected: ${audio_bytes}, Got: ${audio_disk}" \
+      "${PRETTY_CH}" \
+      '\e[1;36m\e[46m >> %s\e[m' || true
 
-      # If we have made it this far...
-      if [ "${EP_RETRY}" = "1" ]; then
-        # ...It is safe to delete the retry flag.
-        export $EP_RETRY=
-      fi
-
-      print_success_fail 0
+      printf '\e[1;36m\e[46m  %s  \e[m\n' "BYTES"
 # - - END: Audio
 
       # If a merged audio/video file does not exist for this episode...
       if [ ! -f research/$ep_name/$ep_name.webm ]; then
         # Print user feedback to the terminal.
-        pad_with_dots "Combining video and audio: '${ep_name}'" || true
+        patch_with_char \
+        "Combining video and audio: '${ep_name}'" \
+        "${PRETTY_CH}" \
+        '\e[0;35m • %s\e[m' || true
 
-        # printf '\e[1;37m\e[41m%s\e[m\n' \
-        # "  CAUTION:  " \
-        # "  • This media post-processing consumes a lot of CPU.  " \
-        # "  • Running heavy background processes is unadvisable. "
+        printf '\e[1;37m\e[45m %s \e[m\n' "WAIT..."
 
         # ...Generate a merged audio/video file.
         ffmpeg \
         -i research/$ep_name/video/$ep_name-video-only.webm \
         -i research/$ep_name/audio/$ep_name-audio-only.m4a \
-        -c:v libvpx-vp9 -crf 0 \
-        -c:a libopus -q:a 0 -b:a 128k \
-        research/$ep_name/$ep_name.webm 2>&1 | \
-        tr -d '\n' >/dev/null || true
+        -c:v copy \
+        -c:a libopus -b:a 192K \
+        research/$ep_name/$ep_name.webm || true
 
-        print_success_fail $?
+        local cav_ec=$?
+
+        patch_with_char \
+        "Combination" \
+        "${PRETTY_CH}" \
+        '\e[0;35m • %s\e[m' || true
+
+        print_success_fail $cav_ec
       fi
 
       # If a frames subdirectory doesn't exist for this episode...
       if [ ! -d research/$ep_name/frames ]; then
         # Print user feedback to the terminal.
-        pad_with_dots "Preparing filesystem" || true
+        patch_with_char \
+        "Preparing filesystem" \
+        "${PRETTY_CH}" \
+        '\e[0;36m%s\e[m' || true
         
         # ...Create the subdirectory.
         mkdir -m 0755 research/$ep_name/frames || true
@@ -591,21 +596,35 @@ function download_and_process_episodes {
       fi
 
       # Print user feedback to the terminal.
-      pad_with_dots "Exporting frames: '${ep_name}'" || true
+      patch_with_char \
+      "Exporting frames: '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
+
+      printf '\e[1;37m\e[45m %s \e[m\n' "WAIT..."
 
       # Export the frames in native VHS-C resolution to save space.
       ffmpeg \
       -i research/$ep_name/video/$ep_name-video-only.webm \
       -vf scale=320:240,setsar=1:1 \
-      research/$ep_name/frames/$ep_name-frame-%08d.png 2>&1 | \
-      tr -d '\n' >/dev/null || true
+      research/$ep_name/frames/$ep_name-frame-%08d.png || true
 
-      print_success_fail $?
+      local ef_ec=$?
+
+      patch_with_char \
+      "Export" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
+
+      print_success_fail $ef_ec
 
       # If a notes directory does not exist...
       if [ ! -d research/$ep_name/notes ]; then
         # Print user feedback to the terminal.
-        pad_with_dots "Preparing filesystem" || true
+        patch_with_char \
+        "Preparing filesystem" \
+        "${PRETTY_CH}" \
+        '\e[0;36m%s\e[m' || true
 
         # Create the notes directory for this episode.
         mkdir -m 0755 research/$ep_name/notes || true
@@ -614,7 +633,12 @@ function download_and_process_episodes {
       fi
 
       # Print user feedback to the terminal.
-      printf '%s' "Generating Obsidian Notes for '${ep_name}'."
+      patch_with_char \
+      "Generating Obsidian Notes for '${ep_name}'" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
+
+      printf '\e[1;37m\e[45m %s \e[m\n' "WAIT..."
 
       # Variables to track linear time across frames.
       local last_note=
@@ -645,6 +669,9 @@ function download_and_process_episodes {
 
           # Print the information regarding this image into its note.
           printf '%s\n' \
+          "---" \
+          "tags: ${ep_name}" \
+          "---" \
           "# ${this_note}" \
           "" \
           "![[../frames/${image}]]" \
@@ -689,6 +716,9 @@ function download_and_process_episodes {
 
             # Generate a root document for the episode pointing to first frame.
             printf '%s\n' \
+            "---" \
+            "tags: ${ep_name}" \
+            "---" \
             "# ${ep_note}" \
             "" \
             "## Async Research Institute Confidential Records" \
@@ -701,21 +731,27 @@ function download_and_process_episodes {
           last_note="${this_note}"
         fi
       done
+
+      patch_with_char \
+      "Generation" \
+      "${PRETTY_CH}" \
+      '\e[0;35m • %s\e[m' || true
+
+      print_success_fail 0
     fi
 
-    # Only permit incrementing to the next episode if retries of the
-    # current episode are not needed.
-    if [ -z "${EP_RETRY}" ]; then
-      EP_I=$(( $EP_I + 1 ))
-    fi
+    EP_I=$(( $EP_I + 1 ))
   done
 }
 
 # Let the user know the project has finished running.
 function confirm_process_completed {
-  echo "All Available Video and Audio Has Been Downloaded."
-  echo "* * *"
-  echo "All Post-processing Steps Completed!"
+  patch_with_char \
+  "Installation Process" \
+  "${PRETTY_CH}" \
+  '\e[0;105m\e[1;36m • %s\e[m' || true
+
+  printf '\e[0;105m\e[1;36m%s\e[m\n' "COMPLETED"
 }
 
 # Entry point.
@@ -768,8 +804,8 @@ function install {
   [ $? -eq 0 ] && \
   verify_install wget \
   $( \
-    wget --help 2>&1 | \
-    awk '/GNU Wget/ { print $1 }' \
+    wget --version 2>&1 | \
+    awk '/GNU Wget/ { print $2 }' \
   ) || true
 
   # YOUTUBE-DL
